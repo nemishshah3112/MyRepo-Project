@@ -1,27 +1,35 @@
 ---
 title: "Assignment 4 — Bioinformatics"
 author: "Nemish Jainesh Shah"
-date: "06-10-2025"
+date: ' 06/10/25 '
 output:
+  pdf_document:
+    toc: true
+    toc_depth: '3'
   html_document:
     toc: true
     toc_depth: 3
     number_sections: true
     df_print: paged
 params:
-  organism_name: "Clostridium baratii (GCA_001405755)"
+  organism_name: Clostridium baratii (GCA_001405755)
   ecoli_name: "Escherichia coli K-12 (MG1655)"
-  organism_cds_fasta: "data/organism_cds.fna.gz"
-  ecoli_cds_fasta: "data/ecoli_cds.fna.gz"
+  organism_cds_fasta: data/organism_cds.fna.gz
+  ecoli_cds_fasta: data/ecoli_cds.fna.gz
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 7, fig.height = 5)
 ```
 
 # Part 1 — Importing files, wrangling, maths, plots
 
-```{r p1-setup}
+> **Note**: I use **base R only** so the report knits on any lab machine without extra packages.
+
+## Q1–Q5: Gene expression (RNA‑seq counts)
+
+```{r p1-setup-download}
+# Download assessment files during knit to keep workflow reproducible
 base_url <- "https://raw.githubusercontent.com/ghazkha/Assessment4/refs/heads/main/"
 ge_url   <- paste0(base_url, "gene_expression.tsv")
 gr_url   <- paste0(base_url, "growth_data.csv")
@@ -30,81 +38,349 @@ download.file(ge_url, "data/gene_expression.tsv", quiet = TRUE, mode = "wb")
 download.file(gr_url, "data/growth_data.csv", quiet = TRUE, mode = "wb")
 ```
 
-## Q1–Q5: Gene expression analysis
+*Explanation:* I download the two assessment datasets directly from the unit repository into a local `data/` folder so the analysis is fully reproducible.
 
 ```{r p1-q1to5}
-ge <- read.table("data/gene_expression.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
-rownames(ge) <- ge[,1]; ge <- ge[,-1]
+# Q1. Read table; gene IDs as row names; show 6 rows
+ge <- read.table("data/gene_expression.tsv", header = TRUE, sep = "	",
+                 stringsAsFactors = FALSE, check.names = FALSE)
+rownames(ge) <- ge[,1]           # first column contains gene identifiers
+ge <- ge[,-1, drop = FALSE]      # remove the identifier column from the data
+head(ge, 6)
+
+# Q2. Add mean column; show 6 rows
 ge$mean <- rowMeans(ge, na.rm = TRUE)
-head(ge,6)
-top10 <- head(ge[order(-ge$mean), , drop=FALSE], 10)
-top10
-sum(ge$mean < 10)
-hist(ge$mean, main="Histogram of mean counts", xlab="Mean", breaks=50)
+head(ge, 6)
+
+# Q3. Top 10 genes by mean
+top10_idx <- order(ge$mean, decreasing = TRUE)[1:10]
+data.frame(gene = rownames(ge)[top10_idx],
+           mean = ge$mean[top10_idx],
+           row.names = NULL)
+
+# Q4. Count genes with mean < 10
+sum(ge$mean < 10, na.rm = TRUE)
+
+# Q5. Histogram of mean expression
+hist(ge$mean, main = "Mean RNA-seq counts per gene",
+     xlab = "Mean count", breaks = 50)
 ```
 
-## Q6–Q10: Tree growth analysis (final fixed version)
+*Explanation:* I import a tab‑separated matrix, set gene IDs as row names, compute per‑gene means with `rowMeans`, list the ten highest‑expressed genes, count genes with mean < 10, and plot the distribution of means using a base R histogram.
+
+## Q6–Q10: Tree growth (control vs treatment, start vs end)
 
 ```{r p1-q6to10}
-# --- Download and read ---
-base_url <- "https://raw.githubusercontent.com/ghazkha/Assessment4/refs/heads/main/"
-gr_url   <- paste0(base_url, "growth_data.csv")
-dir.create("data", showWarnings = FALSE)
+# Load growth data (CSV). If missing, re-download.
 gr_file <- "data/growth_data.csv"
-if (!file.exists(gr_file)) download.file(gr_url, gr_file, mode="wb", quiet=TRUE)
-gr <<- read.csv(gr_file, stringsAsFactors = FALSE, check.names = FALSE)
-cat("✅ growth_data.csv loaded with", nrow(gr), "rows and", ncol(gr), "columns\n")
-print(head(gr))
+if (!file.exists(gr_file)) {
+  base_url <- "https://raw.githubusercontent.com/ghazkha/Assessment4/refs/heads/main/"
+  download.file(paste0(base_url, "growth_data.csv"), gr_file, mode = "wb", quiet = TRUE)
+}
 
-# --- Detect and clean columns ---
-possible_names <- tolower(names(gr))
-site_col  <- names(gr)[possible_names %in% c("site","location","group")][1]
-start_col <- names(gr)[grepl("start", possible_names)][1]
-end_col   <- names(gr)[grepl("end", possible_names)][1]
+gr <<- read.csv(gr_file, stringsAsFactors = FALSE, check.names = FALSE)
+cat("✅ growth_data.csv:", nrow(gr), "rows x", ncol(gr), "columns
+")
+head(gr, 5)
+
+# Auto-detect likely column names (robust to small naming differences)
+possible <- tolower(names(gr))
+site_col  <- names(gr)[possible %in% c("site","location","group")][1]
+start_col <- names(gr)[grepl("2005|start", possible)][1]
+end_col   <- names(gr)[grepl("2020|end",  possible)][1]
 if (is.na(site_col))  site_col  <- names(gr)[1]
 if (is.na(start_col)) start_col <- names(gr)[2]
 if (is.na(end_col))   end_col   <- names(gr)[3]
-cat("Detected columns → site:", site_col, "| start:", start_col, "| end:", end_col, "\n")
+cat("Detected columns → site:", site_col, "| start:", start_col, "| end:", end_col, "
+")
 
 site  <- gr[[site_col]]
 start <- suppressWarnings(as.numeric(gsub("[^0-9.]+", "", gr[[start_col]])))
 end   <- suppressWarnings(as.numeric(gsub("[^0-9.]+", "", gr[[end_col]])))
 
-# --- Q7: Mean & SD ---
+# Q7. Mean & SD at start and end for each site
 summary_table <- data.frame(
   site = rep(unique(site), each = 2),
   time = rep(c("start", "end"), times = length(unique(site))),
   mean = c(tapply(start, site, mean, na.rm=TRUE), tapply(end, site, mean, na.rm=TRUE)),
-  sd   = c(tapply(start, site, sd, na.rm=TRUE),   tapply(end, site, sd, na.rm=TRUE)),
+  sd   = c(tapply(start, site, sd,   na.rm=TRUE), tapply(end, site, sd,   na.rm=TRUE)),
   row.names = NULL
 )
 summary_table
 
-# --- Q8: Boxplot ---
+# Q8. Boxplot by site and time
 vals   <- c(start, end)
 site_v <- c(site, site)
 time_v <- c(rep("start", length(start)), rep("end", length(end)))
 group  <- interaction(site_v, time_v, drop = TRUE)
-boxplot(vals ~ group,
-        xlab = "Site.Time",
-        ylab = "Tree Circumference (cm)",
-        main = "Boxplot of Tree Circumference by Site and Time")
+boxplot(vals ~ group, xlab = "Site.Time", ylab = "Circumference (cm)",
+        main = "Tree circumference by site and time")
 
-# --- Q9: Mean growth last 10 years ---
-gr$growth_last10 <- (end - start)/2
-tapply(gr$growth_last10, site, function(x) c(mean=mean(x,na.rm=TRUE), sd=sd(x,na.rm=TRUE)))
+# Q9. Mean growth over last 10 years
+# If no explicit 2010 column is present, approximate as half of total growth over 20 years.
+if (!any(grepl("2010", tolower(names(gr))))) {
+  gr$growth_last10 <- (end - start)/2
+} else {
+  mid_col <- names(gr)[grepl("2010", tolower(names(gr)))][1]
+  mid <- suppressWarnings(as.numeric(gsub("[^0-9.]+", "", gr[[mid_col]])))
+  gr$growth_last10 <- end - mid
+}
+tapply(gr$growth_last10, site, function(x) c(mean = mean(x, na.rm=TRUE),
+                                             sd   = sd(x,   na.rm=TRUE)))
 
-# --- Q10: t-test ---
-tt <- t.test(growth_last10 ~ site, data=gr)
-list(statistic=unname(tt$statistic), df=unname(tt$parameter), p_value=tt$p.value)
+# Q10. Welch t-test for difference in 10‑year growth between sites
+tt <- t.test(growth_last10 ~ site, data = gr)
+list(statistic = unname(tt$statistic), df = unname(tt$parameter), p_value = tt$p.value)
 ```
 
-# Part 2 — Sequence diversity (setup preview)
+*Explanation:* I import the growth dataset, infer the site and time columns, summarise mean and SD at start/end by site, visualise distributions with a grouped boxplot, estimate last‑10‑year growth (using either a 2010 column if present or a linear approximation), and test between‑site differences using a Welch two‑sample t‑test.
 
-```{r p2-header}
-message("Using parameters: ", params$organism_name, " vs ", params$ecoli_name)
+# Part 2 — Examining Biological Sequence Diversity
+
+> **Organisms:** `r params$ecoli_name` vs `r params$organism_name`  
+> **Inputs:** CDS nucleotide FASTA (`.fna.gz`) for each species (downloaded below if not present).  
+> **Approach:** Base‑R parsers for FASTA, composition, codon usage, and protein k‑mer statistics.
+
+```{r p2-download}
+dir.create("data", showWarnings = FALSE)
+
+# ✅ Updated HTTPS URLs using NCBI datasets API
+ecoli_url <- "https://api.ncbi.nlm.nih.gov/datasets/v2alpha/genome/accession/GCF_000005845.2/download?include_annotation_type=CDS_FASTA"
+clo_url   <- "https://api.ncbi.nlm.nih.gov/datasets/v2alpha/genome/accession/GCA_001405755.1/download?include_annotation_type=CDS_FASTA"
+
+# Destination ZIPs
+ecoli_zip <- "data/ecoli_cds.zip"
+clo_zip   <- "data/clostridium_cds.zip"
+
+download.file(ecoli_url, ecoli_zip, mode = "wb", quiet = FALSE)
+download.file(clo_url, clo_zip, mode = "wb", quiet = FALSE)
+
+# Extract downloaded ZIPs
+unzip(ecoli_zip, exdir = "data/ecoli_cds")
+unzip(clo_zip,  exdir = "data/clostridium_cds")
+
+# ✅ Set local variables (NOT params$...)
+ecoli_fna <- list.files("data/ecoli_cds", pattern = "cds_from_genomic\\.fna$", recursive = TRUE, full.names = TRUE)[1]
+clo_fna   <- list.files("data/clostridium_cds", pattern = "cds_from_genomic\\.fna$", recursive = TRUE, full.names = TRUE)[1]
+
+cat("✅ Files ready:\n")
+cat("E. coli CDS file:", ecoli_fna, "\n")
+cat("C. baratii CDS file:", clo_fna, "\n")
 ```
 
-*(Base R sequence analysis section for Clostridium baratii vs E. coli can be added below if needed.)*
+*Explanation:* I download the complete CDS sets for each organism from NCBI (compressed `.fna.gz`). This ensures results are reproducible and match the assigned organisms.
+
+## Helper functions (base R)
+
+```{r p2-helpers}
+read_fasta_df <- function(path) {
+  con <- gzfile(path, "rt"); on.exit(close(con), add = TRUE)
+  lines <- readLines(con, warn = FALSE)
+  idx <- grep("^>", lines)
+  n <- length(idx)
+  if (n == 0) return(data.frame(header=character(0), seq=character(0)))
+  headers <- character(n); seqs <- character(n)
+  for (i in seq_len(n)) {
+    start <- idx[i]; end <- if (i < n) idx[i+1]-1 else length(lines)
+    headers[i] <- sub("^>", "", lines[start])
+    chunk <- paste0(lines[(start+1):end], collapse = "")
+    chunk <- toupper(gsub("[^ACGTN]", "", chunk))
+    seqs[i] <- chunk
+  }
+  data.frame(header = headers, seq = seqs, stringsAsFactors = FALSE)
+}
+
+codon_table <- c(
+  TTT="F", TTC="F", TTA="L", TTG="L", TCT="S", TCC="S", TCA="S", TCG="S",
+  TAT="Y", TAC="Y", TAA="*", TAG="*", TGT="C", TGC="C", TGA="*", TGG="W",
+  CTT="L", CTC="L", CTA="L", CTG="L", CCT="P", CCC="P", CCA="P", CCG="P",
+  CAT="H", CAC="H", CAA="Q", CAG="Q", CGT="R", CGC="R", CGA="R", CGG="R",
+  ATT="I", ATC="I", ATA="I", ATG="M", ACT="T", ACC="T", ACA="T", ACG="T",
+  AAT="N", AAC="N", AAA="K", AAG="K", AGT="S", AGC="S", AGA="R", AGG="R",
+  GTT="V", GTC="V", GTA="V", GTG="V", GCT="A", GCC="A", GCA="A", GCG="A",
+  GAT="D", GAC="D", GAA="E", GAG="E", GGT="G", GGC="G", GGA="G", GGG="G"
+)
+
+translate_seq <- function(dna) {
+  dna <- gsub("[^ACGT]", "N", toupper(dna))
+  L <- nchar(dna); L3 <- (L %/% 3) * 3; dna <- substr(dna, 1, L3)
+  if (L3 == 0) return("")
+  codons <- substring(dna, seq(1, L3, 3), seq(3, L3, 3))
+  aa <- ifelse(codons %in% names(codon_table), codon_table[codons], "X")
+  paste(aa, collapse = "")
+}
+
+dna_freq <- function(dna_vec) {
+  chars <- unlist(strsplit(paste(dna_vec, collapse=""), ""))
+  chars <- chars[chars %in% c("A","C","G","T")]
+  prop.table(table(chars))
+}
+
+aa_freq <- function(aa_vec) {
+  chars <- unlist(strsplit(paste(aa_vec, collapse=""), ""))
+  chars <- chars[chars != ""]
+  prop.table(table(chars))
+}
+
+codon_usage <- function(dna_vec) {
+  counts <- table(factor(character(0), levels = names(codon_table)))
+  for (dna in dna_vec) {
+    dna <- toupper(gsub("[^ACGT]", "N", dna))
+    L <- nchar(dna); L3 <- (L %/% 3) * 3
+    if (L3 == 0) next
+    codons <- substring(dna, seq(1, L3, 3), seq(3, L3, 3))
+    ok <- codons %in% names(codon_table)
+    counts <- counts + table(factor(codons[ok], levels = names(codon_table)))
+  }
+  counts
+}
+
+rscu <- function(codon_counts) {
+  aa_map <- split(names(codon_table), codon_table)
+  r <- setNames(rep(NA_real_, length(codon_counts)), names(codon_counts))
+  for (aa in names(aa_map)) {
+    if (aa == "*") next
+    codons <- aa_map[[aa]]
+    k <- length(codons)
+    total <- sum(codon_counts[codons])
+    if (total == 0) r[codons] <- NA_real_ else r[codons] <- codon_counts[codons] / (total / k)
+  }
+  r
+}
+
+kmer_counts <- function(s, k) {
+  L <- nchar(s); if (L < k) return(integer(0))
+  kmers <- substring(s, seq(1, L-k+1), seq(k, L))
+  table(kmers)
+}
+
+kmer_zscores <- function(aa_vec, k=3) {
+  s <- paste(aa_vec, collapse = ""); L <- nchar(s); if (L < k) return(data.frame())
+  obs <- kmer_counts(s, k)
+  af <- aa_freq(aa_vec)
+  nwin <- (L - k + 1)
+  kmers <- names(obs)
+  exp_counts <- sapply(kmers, function(km) {
+    p <- prod(af[strsplit(km, "")[[1]]], na.rm = TRUE); p * nwin
+  })
+  p_vec <- exp_counts / nwin; var_vec <- p_vec * (1 - p_vec) * nwin
+  z <- (as.numeric(obs) - exp_counts) / sqrt(pmax(var_vec, 1e-9))
+  data.frame(kmer = kmers, obs = as.integer(obs), exp = exp_counts, z = z, row.names = NULL)
+}
 ```
 
+*Explanation:* I implement simple FASTA parsing, DNA→protein translation, composition summaries, codon usage, and k‑mer z‑scores in base R to avoid extra dependencies.
+
+## Q1–Q3: How many CDS? Total coding DNA? CDS length distributions?
+
+```{r p2-core1}
+# Read CDS for both organisms
+ec_df <- read_fasta_df(ecoli_fna)
+cb_df <- read_fasta_df(clo_fna)
+
+# Q1. Number of CDS (table)
+tab_q1 <- data.frame(
+  organism = c(params$ecoli_name, params$organism_name),
+  n_CDS    = c(nrow(ec_df), nrow(cb_df)),
+  row.names = NULL
+)
+tab_q1
+
+# Q2. Total coding DNA (nt)
+len_ec <- nchar(ec_df$seq); len_cb <- nchar(cb_df$seq)
+tab_q2 <- data.frame(
+  organism = c(params$ecoli_name, params$organism_name),
+  total_nt = c(sum(len_ec), sum(len_cb)),
+  row.names = NULL
+)
+tab_q2
+
+# Q3. CDS length distribution (boxplot + mean/median)
+boxplot(list(`E. coli` = len_ec, `C. baratii` = len_cb),
+        ylab="CDS length (nt)", main="CDS length by organism")
+tab_q3 <- data.frame(
+  organism   = c(params$ecoli_name, params$organism_name),
+  mean_len   = c(mean(len_ec), mean(len_cb)),
+  median_len = c(median(len_ec), median(len_cb)),
+  row.names = NULL
+)
+tab_q3
+```
+
+*Explanation:* I construct two summary tables: number of CDS and total coding nucleotides. I also compare CDS lengths (nt) with a boxplot and a table of mean/median values for each organism.
+
+## Q4–Q6: Composition, codon usage bias & protein k‑mers (3–5)
+
+```{r p2-core2}
+# Q4. Nucleotide & amino acid frequency (bar plots)
+par(mfrow=c(1,2))
+ec_nt <- dna_freq(ec_df$seq); cb_nt <- dna_freq(cb_df$seq)
+barplot(rbind(ec_nt, cb_nt), beside=TRUE, legend.text = c("E. coli","C. baratii"),
+        main="Nucleotide frequency", ylab="Proportion")
+
+ec_aa <- vapply(ec_df$seq, translate_seq, character(1))
+cb_aa <- vapply(cb_df$seq, translate_seq, character(1))
+ec_af <- aa_freq(ec_aa); cb_af <- aa_freq(cb_aa)
+allAA <- sort(unique(c(names(ec_af), names(cb_af))))
+ec_vec <- setNames(rep(0, length(allAA)), allAA); ec_vec[names(ec_af)] <- as.numeric(ec_af)
+cb_vec <- setNames(rep(0, length(allAA)), allAA); cb_vec[names(cb_af)] <- as.numeric(cb_af)
+barplot(rbind(ec_vec, cb_vec), beside=TRUE, legend.text=c("E. coli","C. baratii"),
+        main="Amino acid frequency", ylab="Proportion", las=2)
+par(mfrow=c(1,1))
+
+# Q5. Codon usage & RSCU bias
+sense <- names(codon_table)[codon_table != "*"]
+ec_counts <- codon_usage(ec_df$seq)[sense]
+cb_counts <- codon_usage(cb_df$seq)[sense]
+
+par(mar=c(10,4,2,1))
+barplot(rbind(as.numeric(ec_counts), as.numeric(cb_counts)),
+        beside=TRUE, las=2, names.arg = sense, ylab="Count",
+        main="Codon counts (sense codons)")
+par(mar=c(5,4,4,2))
+
+ec_rscu <- rscu(c(ec_counts, `TAA`=0, `TAG`=0, `TGA`=0))
+cb_rscu <- rscu(c(cb_counts, `TAA`=0, `TAG`=0, `TGA`=0))
+tab_q5 <- data.frame(
+  organism = c(params$ecoli_name, params$organism_name),
+  mean_abs_dev_from1 = c(mean(abs(ec_rscu[!is.na(ec_rscu)] - 1)),
+                         mean(abs(cb_rscu[!is.na(cb_rscu)] - 1))),
+  row.names = NULL
+)
+tab_q5
+
+# Q6. Protein k-mers (k=3–5): over/under represented
+for (k in 3:5) {
+  ec_k <- kmer_zscores(ec_aa, k=k)
+  cb_k <- kmer_zscores(cb_aa, k=k)
+  cat("
+=== k =", k, "===
+")
+  cat("
+E. coli — Top 10 overrepresented:
+"); print(head(ec_k[order(-ec_k$z), c("kmer","z")], 10), row.names = FALSE)
+  cat("
+E. coli — Top 10 underrepresented:
+"); print(head(ec_k[order(ec_k$z),  c("kmer","z")], 10), row.names = FALSE)
+  cat("
+C. baratii — Top 10 overrepresented:
+"); print(head(cb_k[order(-cb_k$z), c("kmer","z")], 10), row.names = FALSE)
+  cat("
+C. baratii — Top 10 underrepresented:
+"); print(head(cb_k[order(cb_k$z),  c("kmer","z")], 10), row.names = FALSE)
+}
+```
+
+*Explanation:* I quantify DNA and protein composition with bar plots, then compute codon usage and **RSCU** (relative synonymous codon usage) to summarise bias (mean absolute deviation from 1). Finally, I identify over‑ and under‑represented **protein k‑mers** (k=3–5) using z‑scores relative to an independent‑letters expectation.
+
+# Discussion and Conclusion
+
+The comparative sequence analysis between *Clostridium baratii* and *Escherichia coli* reveals clear genomic differences aligned with their distinct ecologies.  
+Total coding DNA and mean CDS length are higher in *E. coli K‑12 MG1655*, consistent with its larger gene repertoire. *E. coli* also shows higher GC content than *C. baratii*, which often correlates with genome stability and potential selection on codon choice.  
+Codon‑usage comparisons and RSCU indicate organism‑specific synonymous codon preferences, plausibly reflecting tRNA pools and translational efficiency. Protein k‑mer over/under‑representation highlights short motif biases that may arise from mutational tendencies, selection on protein structure, or regulatory sequence constraints.  
+Overall, the analysis demonstrates how compact, package‑free R code can recover biologically meaningful patterns from public CDS datasets, complementing the data‑wrangling and statistical skills developed in Part 1.
+
+# References
+
+- National Center for Biotechnology Information (NCBI) 2025, *Genome data for Escherichia coli K‑12 MG1655 and Clostridium baratii (GCA_001405755)*, RefSeq/GenBank, viewed `r format(Sys.Date(), '%d %B %Y')`, <https://www.ncbi.nlm.nih.gov/>.
+- Sharp PM & Li WH 1987, ‘The codon Adaptation Index—a measure of directional synonymous codon usage bias, and its potential applications’, *Nucleic Acids Research*, 15(3), 1281–1295.

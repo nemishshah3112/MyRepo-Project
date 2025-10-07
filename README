@@ -1,0 +1,36 @@
+# Assignment 4 — Bioinformatics (R Markdown & Version Control)
+
+**Author:** Nemish Jainesh Shah  
+**University:** Deakin University  
+**Unit:** SLE597 – Bioinformatics  
+**Assessment Weight:** 40%  
+
+---
+
+## 🧩 Overview
+This project demonstrates bioinformatics data analysis using **R Markdown** and **GitHub** for version control.
+
+The workflow includes:
+1. **Data Import and Wrangling** – RNA-seq and tree growth data.
+2. **Data Visualization** – Histograms and boxplots.
+3. **Statistical Analysis** – Mean, standard deviation, and t-tests.
+4. **Sequence Diversity Comparison** – Between *Clostridium baratii (GCA_001405755)* and *E. coli K-12 (MG1655)*.
+
+---
+
+## 🧪 Files in this Repository
+
+| File | Description |
+|------|--------------|
+| `Assignment-4_Bioinfo.Rmd` | Main R Markdown analysis file (Part 1 & Part 2). |
+| `Assignment-4_Bioinfo.html` | Knitted output of the R Markdown file. |
+| `data/gene_expression.tsv` | RNA-seq gene expression data. |
+| `data/growth_data.csv` | Tree growth dataset. |
+
+---
+
+## ⚙️ How to Run
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/nemishshah3112/MyRepo-Project.git
