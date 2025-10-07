@@ -1,0 +1,110 @@
+---
+title: "Assignment 4 — Bioinformatics"
+author: "Nemish Jainesh Shah"
+date: "06-10-2025"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    df_print: paged
+params:
+  organism_name: "Clostridium baratii (GCA_001405755)"
+  ecoli_name: "Escherichia coli K-12 (MG1655)"
+  organism_cds_fasta: "data/organism_cds.fna.gz"
+  ecoli_cds_fasta: "data/ecoli_cds.fna.gz"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Part 1 — Importing files, wrangling, maths, plots
+
+```{r p1-setup}
+base_url <- "https://raw.githubusercontent.com/ghazkha/Assessment4/refs/heads/main/"
+ge_url   <- paste0(base_url, "gene_expression.tsv")
+gr_url   <- paste0(base_url, "growth_data.csv")
+dir.create("data", showWarnings = FALSE)
+download.file(ge_url, "data/gene_expression.tsv", quiet = TRUE, mode = "wb")
+download.file(gr_url, "data/growth_data.csv", quiet = TRUE, mode = "wb")
+```
+
+## Q1–Q5: Gene expression analysis
+
+```{r p1-q1to5}
+ge <- read.table("data/gene_expression.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
+rownames(ge) <- ge[,1]; ge <- ge[,-1]
+ge$mean <- rowMeans(ge, na.rm = TRUE)
+head(ge,6)
+top10 <- head(ge[order(-ge$mean), , drop=FALSE], 10)
+top10
+sum(ge$mean < 10)
+hist(ge$mean, main="Histogram of mean counts", xlab="Mean", breaks=50)
+```
+
+## Q6–Q10: Tree growth analysis (final fixed version)
+
+```{r p1-q6to10}
+# --- Download and read ---
+base_url <- "https://raw.githubusercontent.com/ghazkha/Assessment4/refs/heads/main/"
+gr_url   <- paste0(base_url, "growth_data.csv")
+dir.create("data", showWarnings = FALSE)
+gr_file <- "data/growth_data.csv"
+if (!file.exists(gr_file)) download.file(gr_url, gr_file, mode="wb", quiet=TRUE)
+gr <<- read.csv(gr_file, stringsAsFactors = FALSE, check.names = FALSE)
+cat("✅ growth_data.csv loaded with", nrow(gr), "rows and", ncol(gr), "columns\n")
+print(head(gr))
+
+# --- Detect and clean columns ---
+possible_names <- tolower(names(gr))
+site_col  <- names(gr)[possible_names %in% c("site","location","group")][1]
+start_col <- names(gr)[grepl("start", possible_names)][1]
+end_col   <- names(gr)[grepl("end", possible_names)][1]
+if (is.na(site_col))  site_col  <- names(gr)[1]
+if (is.na(start_col)) start_col <- names(gr)[2]
+if (is.na(end_col))   end_col   <- names(gr)[3]
+cat("Detected columns → site:", site_col, "| start:", start_col, "| end:", end_col, "\n")
+
+site  <- gr[[site_col]]
+start <- suppressWarnings(as.numeric(gsub("[^0-9.]+", "", gr[[start_col]])))
+end   <- suppressWarnings(as.numeric(gsub("[^0-9.]+", "", gr[[end_col]])))
+
+# --- Q7: Mean & SD ---
+summary_table <- data.frame(
+  site = rep(unique(site), each = 2),
+  time = rep(c("start", "end"), times = length(unique(site))),
+  mean = c(tapply(start, site, mean, na.rm=TRUE), tapply(end, site, mean, na.rm=TRUE)),
+  sd   = c(tapply(start, site, sd, na.rm=TRUE),   tapply(end, site, sd, na.rm=TRUE)),
+  row.names = NULL
+)
+summary_table
+
+# --- Q8: Boxplot ---
+vals   <- c(start, end)
+site_v <- c(site, site)
+time_v <- c(rep("start", length(start)), rep("end", length(end)))
+group  <- interaction(site_v, time_v, drop = TRUE)
+boxplot(vals ~ group,
+        xlab = "Site.Time",
+        ylab = "Tree Circumference (cm)",
+        main = "Boxplot of Tree Circumference by Site and Time")
+
+# --- Q9: Mean growth last 10 years ---
+gr$growth_last10 <- (end - start)/2
+tapply(gr$growth_last10, site, function(x) c(mean=mean(x,na.rm=TRUE), sd=sd(x,na.rm=TRUE)))
+
+# --- Q10: t-test ---
+tt <- t.test(growth_last10 ~ site, data=gr)
+list(statistic=unname(tt$statistic), df=unname(tt$parameter), p_value=tt$p.value)
+```
+
+# Part 2 — Sequence diversity (setup preview)
+
+```{r p2-header}
+message("Using parameters: ", params$organism_name, " vs ", params$ecoli_name)
+```
+
+*(Base R sequence analysis section for Clostridium baratii vs E. coli can be added below if needed.)*
+```
+
